@@ -5,7 +5,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchdiffeq
 
-# The code relevant to FNO are from the paper "Fourier Neural Operator for Parametric Partial Differential Equations" and tweaked by the author in this work.
+# 1) The code relevant to FNO are from the paper "Fourier Neural Operator for Parametric Partial Differential Equations" and tweaked by the author in this work.
+# 2) The code relevant to Energy Spectrum is from the link "https://turbulence.utah.edu/codes/turbogenpython/tkespec.py" and tweaked by the author in this work.
+# 3) The DKL_estimator function is from the paper "Divergence estimation for multidimensional densities via k-Nearest-Neighbor distances."
+
 
 # FNO1D
 class SpectralConv1d(nn.Module):
