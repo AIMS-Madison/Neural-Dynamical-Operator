@@ -1,0 +1,2 @@
+The simulation code for this 2-D Navier-Stokes equation are from the paper "Fourier Neural Operator for Parametric Partial Differential Equations
+".
