@@ -5,6 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchdiffeq
 
+# The code relevant to FNO are from the paper "Fourier Neural Operator for Parametric Partial Differential Equations
+" and tweaked by the author in this work.
+
 # FNO1D
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
