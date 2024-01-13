@@ -1,0 +1,2 @@
+The simulation code files for viscous Burgers' equation is from the paper "Fourier Neural Operator for Parametric Partial Differential Equations
+".
