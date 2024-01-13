@@ -1,4 +1,4 @@
-# Continous-Spatial-Temporal-Model
+# Continous Spatial-Temporal Model
 
 ## Short-term Trajectory Prediction & Long-term Statistics Matching
 
