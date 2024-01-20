@@ -16,8 +16,8 @@ from utility import FNO_KSE, FNO_KSE_EKI, get_batch, integrate_batch_eki, acf, D
 
 
 device = "cuda:0"
-np.random.seed(1000)
-torch.manual_seed(1000)
+np.random.seed(0)
+torch.manual_seed(0)
 
 mpl.use("Qt5Agg")
 plt.rcParams["agg.path.chunksize"] = 10000
