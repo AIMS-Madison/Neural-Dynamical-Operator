@@ -1,6 +1,6 @@
 # Continous Spatial-Temporal Model
 
-## Short-term Trajectory Prediction & Long-term Statistics Matching
+## Short-term States Prediction & Long-term Statistics Matching for Complex Systems
 
 
 This repository contains the code for the paper:
