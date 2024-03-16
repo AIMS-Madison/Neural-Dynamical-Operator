@@ -4,4 +4,5 @@
 
 
 This repository contains the code for the paper:
-- [Operator Learning for Continuous Spatial-Temporal Model with A Hybrid Optimization Scheme](https://arxiv.org/abs/2311.11798)
+- [Operator Learning for Continuous Spatial-Temporal Model with Gradient-Based and Derivative-Free Optimization Methods
+](https://arxiv.org/abs/2311.11798)
