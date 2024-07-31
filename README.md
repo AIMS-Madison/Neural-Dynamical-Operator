@@ -1,7 +1,6 @@
 # Neural Dynamical Operator
 
-## Continous Spatial-Temporal Model with
-## Short-term States Prediction & Long-term Statistics Matching for Complex Dynamical Systems
+## Continous Spatial-Temporal Model with \\ Short-term States Prediction & Long-term Statistics Matching for Complex Dynamical Systems
 
 
 This repository contains the code for the paper:
