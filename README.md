@@ -1,5 +1,6 @@
-# Continous Spatial-Temporal Model
+# Neural Dynamical Operator
 
+## Continous Spatial-Temporal Model with
 ## Short-term States Prediction & Long-term Statistics Matching for Complex Dynamical Systems
 
 
