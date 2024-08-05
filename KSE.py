@@ -62,7 +62,7 @@ num_batch = 2
 # t_train = t[:Ntrain]
 # t_test = t[:Ntest]
 # batch_time = 20 # 20s
-# epochs = 10000
+# epochs = 20000
 # num_batch = 2
 
 # # 3. dt=2, dx=22/256
@@ -76,7 +76,7 @@ num_batch = 2
 # t_train = t[:Ntrain]
 # t_test = t[:Ntest]
 # batch_time = 10 # 20s
-# epochs = 10000
+# epochs = 20000
 # num_batch = 2
 
 
