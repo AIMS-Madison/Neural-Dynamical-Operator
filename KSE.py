@@ -11,9 +11,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchdiffeq
 from utility import FNO_KSE, get_batch, integrate_batch, acf, DKL_estimator
+import time
 
 
-device = "cuda:1"
+device = "cpu"
 np.random.seed(0)
 torch.manual_seed(0)
 
@@ -31,14 +32,13 @@ plt.rcParams["text.latex.preamble"] = r"\usepackage{amsmath} \boldmath"
 #Simulation Setting: Lx = 22, Lt = 5000, dx=22/1024, dt = 0.025
 
 #Data Setting: dt=0.25, dx=22/1024
-u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KS_data.npy")).to(torch.float32)
+u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KSE_data.npy")).to(torch.float32)
 t = torch.arange(0, 5000, 0.25)
 x = torch.arange(0, 22, 22/1024)
 
-
 # Subsampling for different resolutions
 
-#1. dt=0.5, dx=22/1024
+# 1. dt=0.5, dx=22/1024
 u_data = u_data[::2] # (10000, 1024)
 t = t[::2]
 Ntrain = int(10000*0.8)
@@ -65,7 +65,7 @@ num_batch = 2
 # epochs = 10000
 # num_batch = 2
 
-# #3. dt=2, dx=22/256
+# # 3. dt=2, dx=22/256
 # u_data = u_data[::8, ::4] # (2500, 256)
 # t = t[::8]
 # x = x[::4]
@@ -80,9 +80,9 @@ num_batch = 2
 # num_batch = 2
 
 
-#######################
-### Model Trainning ###
-#######################
+######################
+### Model Training ###
+######################
 
 iterations = epochs
 loss_training_history = []
@@ -94,6 +94,7 @@ optimizer = optim.Adam(model.parameters())
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
 
 for ep in range(1, epochs+1):
+    start_time = time.time()
     batch_u0, batch_t, batch_u = get_batch(t=t_train, u=u_train, num_batch=num_batch, batch_time=batch_time)
     batch_u0 = batch_u0.to(device)
     batch_t = batch_t.to(device)
@@ -101,12 +102,13 @@ for ep in range(1, epochs+1):
     optimizer.zero_grad()
     out = torchdiffeq.odeint(model, batch_u0, batch_t, method="rk4", options={"step_size":0.1})
     loss = F.mse_loss(batch_u, out)
-    print(torch.cuda.memory_allocated(device=device) / 1024**2)
+    # print(torch.cuda.memory_allocated(device=device) / 1024**2)
     loss.backward()
     optimizer.step()
     scheduler.step()
     loss_training_history.append(loss.item())
-    print(ep, loss.item())
+    end_time = time.time()
+    print(ep, "Time: ", round(end_time-start_time, 4), "Loss: ",  round(loss.item(), 4) )
 
     # if ep % test_freq == 0:
     #     # Test Loss
@@ -115,7 +117,7 @@ for ep in range(1, epochs+1):
     #         loss_test_history.append(state_test_error)
     #     print(ep, "Test Loss: ", state_test_error)
 
-# torch.save(model.state_dict(), "/home/cc/Downloads/KS1.pt")
+# torch.save(model.state_dict(), "/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v1.pt")
 # with open("/home/cc/Downloads/KS_modelnew_new/KS_loss_training_new_new3.npy", "wb") as f:
 #     np.save(f, loss_training_history)
 # with open("/home/cc/Downloads/KS_modelnew_new/KS_loss_test_new_new2.npy", "wb") as f:
@@ -123,11 +125,12 @@ for ep in range(1, epochs+1):
 
 
 
+
 #########################
 ### Model Application ###
 #########################
 
-u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KS_data.npy")).to(torch.float32)
+u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KSE_data(XD).npy")).to(torch.float32)
 t = torch.linspace(0, 5000, 20001)[:-1]
 x = torch.from_numpy(np.linspace(0, 22, 1024, endpoint=False))
 Ntrain = int(u_data.shape[0]*0.8)
@@ -137,15 +140,16 @@ u_test = u_data[-Ntest:]
 t_train = t[:Ntrain]
 t_test = t[:Ntest]
 
+
 # Pre-trained Model
 model1 = FNO_KSE(24, 64)
-model1.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v1.pt"))
+model1.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v1(XD)_ep20000.pt", map_location=torch.device('cpu')))
 model2 = FNO_KSE(24, 64)
-model2.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v2.pt"))
+model2.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v2(XD)_ep20000.pt", map_location=torch.device('cpu')))
 model3 = FNO_KSE(24, 64)
-model3.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v3.pt"))
+model3.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v3(XD)_ep20000.pt", map_location=torch.device('cpu')))
 
-
+# Different Resolution for Test Data
 u_test_res1 = u_test[::2]
 u_test_res2 = u_test[::4, ::2]
 u_test_res3 = u_test[::8, ::4]
@@ -161,7 +165,6 @@ def short_err(u, u_pred, h):
     abs_err = torch.mean((u-u_pred)**2).item()
     rel_err = torch.mean(torch.norm(u-u_pred, 2, 1)/torch.norm(u, 2, 1)).item()
     return [abs_err, rel_err]
-
 
 #Short-term Predictions & Test Error (Each Resolution)
 test_error_abs1_res1, test_error_rel1_res1, u_test_pred_short1_res1 = integrate_batch(t_test_res1, u_test_res1, model1, batch_time=40)
@@ -179,7 +182,6 @@ test_error_abs3, test_error_rel3, u_test_pred_short3 = integrate_batch(t_test, u
 short_err(u_test, u_test_pred_short1, 80)
 short_err(u_test, u_test_pred_short2, 80)
 short_err(u_test, u_test_pred_short3, 80)
-
 
 
 def DKL1d(data_p, data_q):
@@ -202,14 +204,13 @@ with torch.no_grad():
     u_test_pred2_res2 = torchdiffeq.odeint(model2, u_test_res2[[0]].to(device), t_test_res2.to(device))[:,0,:].cpu()
     u_test_pred3_res3 = torchdiffeq.odeint(model3, u_test_res3[[0]].to(device), t_test_res3.to(device))[:,0,:].cpu()
 
-DKL_estimator(u_test_res1[:, ::4].reshape(-1,1), u_test_pred1_res1[:, ::4].reshape(-1, 1))
-DKL_estimator(u_test_res2[:, ::2].reshape(-1,1), u_test_pred2_res2[:, ::2].reshape(-1, 1))
-DKL_estimator(u_test_res3[:300].reshape(-1,1), u_test_pred3_res3[:300].reshape(-1, 1))
+DKL_estimator(u_test_res1.reshape(-1,1), u_test_pred1_res1.reshape(-1, 1))
+DKL_estimator(u_test_res2.reshape(-1,1), u_test_pred2_res2.reshape(-1, 1))
+DKL_estimator(u_test_res3.reshape(-1,1), u_test_pred3_res3.reshape(-1, 1))
 
-# DKL1d(u_test_res1[:, ::4].reshape(-1), u_test_pred1_res1[:, ::4].reshape(-1))
-# DKL1d(u_test_res2[:, ::2].reshape(-1), u_test_pred2_res2[:, ::2].reshape(-1))
-# DKL1d(u_test_res3[:500].reshape(-1), u_test_pred3_res3[:500].reshape(-1))
-
+# DKL1d(u_test_res1.reshape(-1), u_test_pred1_res1.reshape(-1))
+# DKL1d(u_test_res2.reshape(-1), u_test_pred2_res2.reshape(-1))
+# DKL1d(u_test_res3.reshape(-1), u_test_pred3_res3.reshape(-1))
 
 # Long-time Prediction of Test Data (Same Resolution)
 with torch.no_grad():
@@ -217,20 +218,18 @@ with torch.no_grad():
     u_test_pred2 = torchdiffeq.odeint(model2, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
     u_test_pred3 = torchdiffeq.odeint(model3, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
 
-DKL1d(u_test[:, ::4].reshape(-1), u_test_pred1[:, ::4].reshape(-1))
-DKL1d(u_test[:, ::4].reshape(-1), u_test_pred2[:, ::4].reshape(-1))
-DKL1d(u_test[:, ::4].reshape(-1), u_test_pred3[:, ::4].reshape(-1))
+DKL_estimator(u_test.reshape(-1,1), u_test_pred1.reshape(-1, 1))
+DKL_estimator(u_test.reshape(-1,1), u_test_pred2.reshape(-1, 1))
+DKL_estimator(u_test.reshape(-1,1), u_test_pred3.reshape(-1, 1))
 
-# DKL1d(u_test[:, ::4].reshape(-1), u_test_pred1[:, ::4].reshape(-1))
-# DKL1d(u_test[:, ::4].reshape(-1), u_test_pred2[:, ::4].reshape(-1))
-# DKL1d(u_test[:, ::4].reshape(-1), u_test_pred3[:, ::4].reshape(-1))
+# DKL1d(u_test.reshape(-1), u_test_pred1.reshape(-1))
+# DKL1d(u_test.reshape(-1), u_test_pred2.reshape(-1))
+# DKL1d(u_test.reshape(-1), u_test_pred3.reshape(-1))
 
 
-plt.plot(x[::4], u_test_pred3_res3[-1], label="Test on Same resolution 3")
-plt.plot(x, u_test_pred3[-1], label="Test on Finer resolution")
-plt.title("Model 3 (t=1000)", fontsize=40)
-plt.legend(fontsize=40)
-plt.tick_params(labelsize=40)
+
+
+
 
 
 # Pcolor
@@ -265,8 +264,6 @@ axs[1,1].set_title(r"\textbf{Model 3}", fontsize=40)
 axs[1,1].tick_params(labelsize=40, length=15, width=3)
 cbar = fig.colorbar(c, ax=axs)
 cbar.ax.tick_params(labelsize=40, length=15, width=3)
-
-
 
 
 
@@ -588,6 +585,7 @@ fig.tight_layout()
 fig.subplots_adjust(top=0.8)
 for spine in ax.spines.values():
     spine.set_linewidth(3)
+
 
 
 
