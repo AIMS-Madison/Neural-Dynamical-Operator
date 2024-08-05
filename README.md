@@ -1,5 +1,4 @@
-# Neural Dynamical Operator, <br>
-with Hybrid Optimization
+# Neural Dynamical Operator <br> with Hybrid Optimization
 
 ## Continous Spatial-Temporal Model with Short-term States Prediction & Long-term Statistics Matching for Complex Dynamical Systems
 
