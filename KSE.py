@@ -1,5 +1,5 @@
 import sys
-sys.path.append("/home/cc/CodeProjects/NeuralDynamicalOperator")
+sys.path.append(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator")
 import numpy as np
 import scipy as sp
 import matplotlib as mpl
@@ -10,11 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchdiffeq
-from utility import FNO_KSE, get_batch, integrate_batch, acf, DKL_estimator
+from utility_old import get_batch
+from utility import FNO_KSE, acf, DKL_estimator, predict_short_relay, DKL1d
 import time
 
 
-device = "cpu"
+
+device = "cuda:1"
 np.random.seed(0)
 torch.manual_seed(0)
 
@@ -32,24 +34,24 @@ plt.rcParams["text.latex.preamble"] = r"\usepackage{amsmath} \boldmath"
 #Simulation Setting: Lx = 22, Lt = 5000, dx=22/1024, dt = 0.025
 
 #Data Setting: dt=0.25, dx=22/1024
-u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KSE_data.npy")).to(torch.float32)
+u_data = torch.from_numpy(np.load(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Data\KSE_data.npy")).to(torch.float32)
 t = torch.arange(0, 5000, 0.25)
 x = torch.arange(0, 22, 22/1024)
 
 # Subsampling for different resolutions
 
 # 1. dt=0.5, dx=22/1024
-u_data = u_data[::2] # (10000, 1024)
-t = t[::2]
-Ntrain = int(10000*0.8)
-Ntest = int(10000*0.2)
-u_train = u_data[:Ntrain]
-u_test = u_data[-Ntest:]
-t_train = t[:Ntrain]
-t_test = t[:Ntest]
-batch_time = 40 #20s
-epochs = 20000
-num_batch = 2
+# u_data = u_data[::2] # (10000, 1024)
+# t = t[::2]
+# Ntrain = int(10000*0.8)
+# Ntest = int(10000*0.2)
+# u_train = u_data[:Ntrain]
+# u_test = u_data[-Ntest:]
+# t_train = t[:Ntrain]
+# t_test = t[:Ntest]
+# batch_time = 40 #20s
+# epochs = 20000
+# num_batch = 2
 
 # # 2. dt=1, dx=22/512
 # u_data = u_data[::4, ::2] # (5000, 512)
@@ -65,40 +67,37 @@ num_batch = 2
 # epochs = 20000
 # num_batch = 2
 
-# # 3. dt=2, dx=22/256
-# u_data = u_data[::8, ::4] # (2500, 256)
-# t = t[::8]
-# x = x[::4]
-# Ntrain = int(2500*0.8)
-# Ntest = int(2500*0.2)
-# u_train = u_data[:Ntrain]
-# u_test = u_data[-Ntest:]
-# t_train = t[:Ntrain]
-# t_test = t[:Ntest]
-# batch_time = 10 # 20s
-# epochs = 20000
-# num_batch = 2
+# 3. dt=2, dx=22/256
+u_data = u_data[::8, ::4] # (2500, 256)
+t = t[::8]
+x = x[::4]
+Ntrain = int(2500*0.8)
+Ntest = int(2500*0.2)
+u_train = u_data[:Ntrain]
+u_test = u_data[-Ntest:]
+t_train = t[:Ntrain]
+t_test = t[:Ntest]
+batch_time = 10 # 20s
+epochs = 10000
+num_batch = 2
+
 
 
 ######################
 ### Model Training ###
 ######################
 
-iterations = epochs
 loss_training_history = []
 loss_test_history = []
 test_freq = 100
 
 model = FNO_KSE(24, 64).to(device)
 optimizer = optim.Adam(model.parameters())
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iterations)
-
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 for ep in range(1, epochs+1):
     start_time = time.time()
     batch_u0, batch_t, batch_u = get_batch(t=t_train, u=u_train, num_batch=num_batch, batch_time=batch_time)
-    batch_u0 = batch_u0.to(device)
-    batch_t = batch_t.to(device)
-    batch_u = batch_u.to(device)
+    batch_u0, batch_t, batch_u = batch_u0.to(device), batch_t.to(device), batch_u.to(device)
     optimizer.zero_grad()
     out = torchdiffeq.odeint(model, batch_u0, batch_t, method="rk4", options={"step_size":0.1})
     loss = F.mse_loss(batch_u, out)
@@ -117,11 +116,9 @@ for ep in range(1, epochs+1):
     #         loss_test_history.append(state_test_error)
     #     print(ep, "Test Loss: ", state_test_error)
 
-# torch.save(model.state_dict(), "/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v1.pt")
-# with open("/home/cc/Downloads/KS_modelnew_new/KS_loss_training_new_new3.npy", "wb") as f:
-#     np.save(f, loss_training_history)
-# with open("/home/cc/Downloads/KS_modelnew_new/KS_loss_test_new_new2.npy", "wb") as f:
-#     np.save(f, loss_test_history)
+# torch.save(model.state_dict(), r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Model\KSE_Models\KS_model_v3_ep10000(modes12_width32).pt")
+# np.save(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Model\KSE_Models\KS_model_v3_ep10000(modes12_width32)_loss_training_history.npy", loss_training_history)
+
 
 
 
@@ -130,7 +127,7 @@ for ep in range(1, epochs+1):
 ### Model Application ###
 #########################
 
-u_data = torch.from_numpy(np.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Data/KSE_data(XD).npy")).to(torch.float32)
+u_data = torch.from_numpy(np.load(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Data\KSE_data.npy")).to(torch.float32)
 t = torch.linspace(0, 5000, 20001)[:-1]
 x = torch.from_numpy(np.linspace(0, 22, 1024, endpoint=False))
 Ntrain = int(u_data.shape[0]*0.8)
@@ -143,11 +140,11 @@ t_test = t[:Ntest]
 
 # Pre-trained Model
 model1 = FNO_KSE(24, 64)
-model1.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v1(XD)_ep20000.pt", map_location=torch.device('cpu')))
+model1.load_state_dict(torch.load(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Model\KSE_Models\KS_model_v1_ep20000.pt"))
 model2 = FNO_KSE(24, 64)
-model2.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v2(XD)_ep20000.pt", map_location=torch.device('cpu')))
-model3 = FNO_KSE(24, 64)
-model3.load_state_dict(torch.load("/home/cc/CodeProjects/NeuralDynamicalOperator/Model/KS_model_v3(XD)_ep20000.pt", map_location=torch.device('cpu')))
+model2.load_state_dict(torch.load(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Model\KSE_Models\KS_model_v2_ep20000.pt"))
+model3 = FNO_KSE(12, 32)
+model3.load_state_dict(torch.load(r"C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\Model\KSE_Models\KS_model_v3_ep20000.pt"))
 
 # Different Resolution for Test Data
 u_test_res1 = u_test[::2]
@@ -157,78 +154,78 @@ t_test_res1 = t_test[::2]
 t_test_res2 = t_test[::4]
 t_test_res3 = t_test[::8]
 
+#Short-term Relay Predictions & Test Error (Each Resolution)
+u_test_pred_short1_res1 = predict_short_relay(u_test_res1, t_test_res1, model1, 40)
+u_test_pred_short2_res2 = predict_short_relay(u_test_res2, t_test_res2, model2, 20)
+u_test_pred_short3_res3 = predict_short_relay(u_test_res3, t_test_res3, model3, 10)
 
-def short_err(u, u_pred, h):
-    indices_to_keep = [i for i in range(u.shape[0]) if i % h != 0]
-    u = u[indices_to_keep]
-    u_pred = u_pred[indices_to_keep]
-    abs_err = torch.mean((u-u_pred)**2).item()
-    rel_err = torch.mean(torch.norm(u-u_pred, 2, 1)/torch.norm(u, 2, 1)).item()
-    return [abs_err, rel_err]
+F.mse_loss(u_test_res1, u_test_pred_short1_res1).item()
+F.mse_loss(u_test_res2, u_test_pred_short2_res2).item()
+F.mse_loss(u_test_res3, u_test_pred_short3_res3).item()
+torch.mean( torch.norm(u_test_res1 - u_test_pred_short1_res1, 2, 1) / torch.norm(u_test_res1, 2, 1) ).item()
+torch.mean( torch.norm(u_test_res2 - u_test_pred_short2_res2, 2, 1) / torch.norm(u_test_res2, 2, 1) ).item()
+torch.mean( torch.norm(u_test_res3 - u_test_pred_short3_res3, 2, 1) / torch.norm(u_test_res3, 2, 1) ).item()
 
-#Short-term Predictions & Test Error (Each Resolution)
-test_error_abs1_res1, test_error_rel1_res1, u_test_pred_short1_res1 = integrate_batch(t_test_res1, u_test_res1, model1, batch_time=40)
-test_error_abs2_res2, test_error_rel2_res2, u_test_pred_short2_res2 = integrate_batch(t_test_res2, u_test_res2, model2, batch_time=20)
-test_error_abs3_res3, test_error_rel3_res3, u_test_pred_short3_res3 = integrate_batch(t_test_res3, u_test_res3, model3, batch_time=10)
-short_err(u_test_res1, u_test_pred_short1_res1, 40)
-short_err(u_test_res2, u_test_pred_short2_res2, 20)
-short_err(u_test_res3, u_test_pred_short3_res3, 10)
 
 
 #Short-term Predictions & Test Error (Same Resolution)
-test_error_abs1, test_error_rel1, u_test_pred_short1 = integrate_batch(t_test, u_test, model1, batch_time=80)
-test_error_abs2, test_error_rel2, u_test_pred_short2 = integrate_batch(t_test, u_test, model2, batch_time=80)
-test_error_abs3, test_error_rel3, u_test_pred_short3 = integrate_batch(t_test, u_test, model3, batch_time=80)
-short_err(u_test, u_test_pred_short1, 80)
-short_err(u_test, u_test_pred_short2, 80)
-short_err(u_test, u_test_pred_short3, 80)
+u_test_pred_short1 = predict_short_relay(u_test, t_test, model1, 80)
+u_test_pred_short2 = predict_short_relay(u_test, t_test, model2, 80)
+u_test_pred_short3 = predict_short_relay(u_test, t_test, model3, 80)
+
+F.mse_loss(u_test, u_test_pred_short1).item()
+F.mse_loss(u_test, u_test_pred_short2).item()
+F.mse_loss(u_test, u_test_pred_short3).item()
+torch.mean( torch.norm(u_test - u_test_pred_short1, 2, 1) / torch.norm(u_test, 2, 1) ).item()
+torch.mean( torch.norm(u_test - u_test_pred_short2, 2, 1) / torch.norm(u_test, 2, 1) ).item()
+torch.mean( torch.norm(u_test - u_test_pred_short3, 2, 1) / torch.norm(u_test, 2, 1) ).item()
 
 
-def DKL1d(data_p, data_q):
-    kde_p = sp.stats.gaussian_kde(data_p)
-    kde_q = sp.stats.gaussian_kde(data_q)
-    grid_points = np.linspace(min(data_p.min(), data_q.min()), max(data_p.max(), data_q.max()), 1000)
-    pdf_p = kde_p(grid_points)
-    pdf_q = kde_q(grid_points)
-    epsilon = 1e-10
-    kl_values = sp.special.kl_div(pdf_p, pdf_q + epsilon)
-    kl_total = np.trapz(kl_values, grid_points)
-    return kl_total
 
+
+
+
+
+# Long-time Prediction of Test Data (Each Resolution)
 model1.to(device)
 model2.to(device)
 model3.to(device)
-# Long-time Prediction of Test Data (Each Resolution)
-with torch.no_grad():
-    u_test_pred1_res1 = torchdiffeq.odeint(model1, u_test_res1[[0]].to(device), t_test_res1.to(device))[:,0,:].cpu()
-    u_test_pred2_res2 = torchdiffeq.odeint(model2, u_test_res2[[0]].to(device), t_test_res2.to(device))[:,0,:].cpu()
-    u_test_pred3_res3 = torchdiffeq.odeint(model3, u_test_res3[[0]].to(device), t_test_res3.to(device))[:,0,:].cpu()
+# with torch.no_grad():
+#     u_test_pred1_res1 = torchdiffeq.odeint(model1, u_test_res1[[0]].to(device), t_test_res1.to(device))[:,0,:].cpu()
+#     u_test_pred2_res2 = torchdiffeq.odeint(model2, u_test_res2[[0]].to(device), t_test_res2.to(device))[:,0,:].cpu()
+#     u_test_pred3_res3 = torchdiffeq.odeint(model3, u_test_res3[[0]].to(device), t_test_res3.to(device))[:,0,:].cpu()
 
-DKL_estimator(u_test_res1.reshape(-1,1), u_test_pred1_res1.reshape(-1, 1))
-DKL_estimator(u_test_res2.reshape(-1,1), u_test_pred2_res2.reshape(-1, 1))
-DKL_estimator(u_test_res3.reshape(-1,1), u_test_pred3_res3.reshape(-1, 1))
+u_test_pred1_res1 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred1_res1(XD).npy"))
+u_test_pred2_res2 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred2_res2(XD).npy"))
+u_test_pred3_res3 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred3_res3_12_32.npy"))
 
-# DKL1d(u_test_res1.reshape(-1), u_test_pred1_res1.reshape(-1))
-# DKL1d(u_test_res2.reshape(-1), u_test_pred2_res2.reshape(-1))
-# DKL1d(u_test_res3.reshape(-1), u_test_pred3_res3.reshape(-1))
+# Forward DKL
+DKL_res1_forward = DKL1d(u_test_res1.reshape(-1), u_test_pred1_res1.reshape(-1))
+DKL_res2_forward = DKL1d(u_test_res2.reshape(-1), u_test_pred2_res2.reshape(-1))
+DKL_res3_forward = DKL1d(u_test_res3.reshape(-1), u_test_pred3_res3.reshape(-1))
+# Reverse DKL
+DKL_res1_reverse = DKL1d(u_test_pred1_res1.reshape(-1), u_test_res1.reshape(-1))
+DKL_res2_reverse = DKL1d(u_test_pred2_res2.reshape(-1), u_test_res2.reshape(-1))
+DKL_res3_reverse = DKL1d(u_test_pred3_res3.reshape(-1), u_test_res3.reshape(-1))
 
 # Long-time Prediction of Test Data (Same Resolution)
-with torch.no_grad():
-    u_test_pred1 = torchdiffeq.odeint(model1, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
-    u_test_pred2 = torchdiffeq.odeint(model2, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
-    u_test_pred3 = torchdiffeq.odeint(model3, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
+# with torch.no_grad():
+#     u_test_pred1 = torchdiffeq.odeint(model1, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
+#     u_test_pred2 = torchdiffeq.odeint(model2, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
+#     u_test_pred3 = torchdiffeq.odeint(model3, u_test[[0]].to(device), t_test.to(device))[:,0,:].cpu()
 
-DKL_estimator(u_test.reshape(-1,1), u_test_pred1.reshape(-1, 1))
-DKL_estimator(u_test.reshape(-1,1), u_test_pred2.reshape(-1, 1))
-DKL_estimator(u_test.reshape(-1,1), u_test_pred3.reshape(-1, 1))
+u_test_pred1 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred1(XD).npy"))
+u_test_pred2 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred2(XD).npy"))
+u_test_pred3 = torch.from_numpy(np.load(r"C:\Users\chenc\Downloads\KSE_longSimu\u_test_pred3_12_32.npy"))
 
-# DKL1d(u_test.reshape(-1), u_test_pred1.reshape(-1))
-# DKL1d(u_test.reshape(-1), u_test_pred2.reshape(-1))
-# DKL1d(u_test.reshape(-1), u_test_pred3.reshape(-1))
-
-
-
-
+# Forward DKL
+DKL1_forward = DKL1d(u_test.reshape(-1), u_test_pred1.reshape(-1))
+DKL2_forward = DKL1d(u_test.reshape(-1), u_test_pred2.reshape(-1))
+DKL3_forward = DKL1d(u_test.reshape(-1), u_test_pred3.reshape(-1))
+# Reverse DKL
+DKL1_reverse = DKL1d(u_test_pred1.reshape(-1), u_test.reshape(-1))
+DKL2_reverse = DKL1d(u_test_pred2.reshape(-1), u_test.reshape(-1))
+DKL3_reverse = DKL1d(u_test_pred3.reshape(-1), u_test.reshape(-1))
 
 
 
@@ -365,26 +362,21 @@ fig.tight_layout()
 fig.subplots_adjust(top=0.87)
 
 
+## Long-Term Statistics
+u_long_pred_smooth1 = torch.fft.irfft(torch.fft.rfft(u_test_pred1)[:, :8], n=u_test_pred1.shape[1])
+u_long_pred_smooth2 = torch.fft.irfft(torch.fft.rfft(u_test_pred2)[:, :8], n=u_test_pred2.shape[1])
+u_long_pred_smooth3 = torch.fft.irfft(torch.fft.rfft(u_test_pred3)[:, :8], n=u_test_pred3.shape[1])
 
-## Long-Term Statistics (Abstract Symbol)
-u_data_sub = u_test
-u_long_pred1 = u_test_pred1
-u_long_pred2 = u_test_pred2
-u_long_pred3 = u_test_pred3
-# Smoother
-u_long_pred_smooth1 = sp.signal.savgol_filter(sp.signal.savgol_filter(u_long_pred1, 100, 3), 100, 3)
-u_long_pred_smooth2 = sp.signal.savgol_filter(sp.signal.savgol_filter(u_long_pred2, 100, 3), 100, 3)
-u_long_pred_smooth3 = sp.signal.savgol_filter(sp.signal.savgol_filter(u_long_pred3, 100, 3), 100, 3)
-# 1024 --> 256
-u_data_sub = u_data_sub[:, ::4]
+# subsampling(1024 --> 256) to reduce computational cost
+u_test_sub = u_test[:, ::4]
 u_long_pred_smooth1 = u_long_pred_smooth1[:, ::4]
 u_long_pred_smooth2 = u_long_pred_smooth2[:, ::4]
 u_long_pred_smooth3 = u_long_pred_smooth3[:, ::4]
 
 # Numerical 1st & 2nd Derivative
 dx = 22/256
-u_x = (u_data_sub[:, 2:] - u_data_sub[:, :-2]) / (2*dx)
-u_xx = (u_data_sub[:, 2:] + u_data_sub[:, :-2] - 2*u_data_sub[:, 1:-1]) / (dx**2)
+u_x = (u_test_sub[:, 2:] - u_test_sub[:, :-2]) / (2 * dx)
+u_xx = (u_test_sub[:, 2:] + u_test_sub[:, :-2] - 2 * u_test_sub[:, 1:-1]) / (dx ** 2)
 u_x1 = (u_long_pred_smooth1[:, 2:] - u_long_pred_smooth1[:, :-2]) / (2*dx)
 u_xx1 = (u_long_pred_smooth1[:, 2:] + u_long_pred_smooth1[:, :-2] - 2*u_long_pred_smooth1[:, 1:-1]) / (dx**2)
 u_x2 = (u_long_pred_smooth2[:, 2:] - u_long_pred_smooth2[:, :-2]) / (2*dx)
@@ -402,10 +394,10 @@ u_jointPDF3 = np.stack( [u_x3.reshape(-1), u_xx3.reshape(-1)] ).T
 # Visualization of Marginal PDF
 fig = plt.figure(figsize=(20, 8))
 ax = fig.subplots(1, 3)
-sns.kdeplot(u_data_sub.reshape(-1), ax=ax[0], label=r"\textbf{True}", linewidth=5)
-sns.kdeplot(u_long_pred_smooth1.reshape(-1), ax=ax[0], label=r"\textbf{Model 1}", linewidth=5)
-sns.kdeplot(u_long_pred_smooth2.reshape(-1), ax=ax[0], label=r"\textbf{Model 2}", linewidth=5)
-sns.kdeplot(u_long_pred_smooth3.reshape(-1), ax=ax[0], label=r"\textbf{Model 3}", linewidth=5)
+sns.kdeplot(u_test.reshape(-1), ax=ax[0], label=r"\textbf{True}", linewidth=5)
+sns.kdeplot(u_test_pred1.reshape(-1), ax=ax[0], label=r"\textbf{Model 1}", linewidth=5)
+sns.kdeplot(u_test_pred2.reshape(-1), ax=ax[0], label=r"\textbf{Model 2}", linewidth=5)
+sns.kdeplot(u_test_pred3.reshape(-1), ax=ax[0], label=r"\textbf{Model 3}", linewidth=5)
 ax[0].set_xlabel(r"\unboldmath$u$", fontsize=35)
 ax[0].set_ylabel("")
 ax[0].set_title(r"\textbf{PDF of} \unboldmath$u$", fontsize=30, pad=10)
@@ -436,20 +428,17 @@ lege.get_frame().set_linewidth(3)
 fig.tight_layout()
 fig.subplots_adjust(top=0.77)
 
-
-
-
 # Visualization of Spatial & Temporal ACF
 acf_accumulator = 0
 acf_accumulator1 = 0
 acf_accumulator2 = 0
 acf_accumulator3 = 0
-for j in range(u_data_sub.shape[1]):
-    acf_accumulator += acf(u_data_sub[:, j])[1]
+for j in range(u_test_sub.shape[1]):
+    acf_accumulator += acf(u_test_sub[:, j])[1]
     acf_accumulator1 += acf(u_long_pred_smooth1[:, j])[1]
     acf_accumulator2 += acf(u_long_pred_smooth2[:, j])[1]
     acf_accumulator3 += acf(u_long_pred_smooth3[:, j])[1]
-u_acf = acf_accumulator/u_data_sub.shape[1]
+u_acf = acf_accumulator / u_test_sub.shape[1]
 u_acf1 = acf_accumulator1/u_long_pred_smooth1.shape[1]
 u_acf2 = acf_accumulator2/u_long_pred_smooth2.shape[1]
 u_acf3 = acf_accumulator3/u_long_pred_smooth3.shape[1]
@@ -457,12 +446,12 @@ sacf_accumulator = 0
 sacf_accumulator1 = 0
 sacf_accumulator2 = 0
 sacf_accumulator3 = 0
-for i in range(u_data_sub.shape[0]):
-    sacf_accumulator += acf(np.tile(u_data_sub[i],2), 255)[1]
+for i in range(u_test_sub.shape[0]):
+    sacf_accumulator += acf(np.tile(u_test_sub[i], 2), 255)[1]
     sacf_accumulator1 += acf(np.tile(u_long_pred_smooth1[i],2), 255)[1]
     sacf_accumulator2 += acf(np.tile(u_long_pred_smooth2[i],2), 255)[1]
     sacf_accumulator3 += acf(np.tile(u_long_pred_smooth3[i],2), 255)[1]
-u_sacf = sacf_accumulator/u_data_sub.shape[0]
+u_sacf = sacf_accumulator / u_test_sub.shape[0]
 u_sacf1 = sacf_accumulator1/u_long_pred_smooth1.shape[0]
 u_sacf2 = sacf_accumulator2/u_long_pred_smooth2.shape[0]
 u_sacf3 = sacf_accumulator3/u_long_pred_smooth3.shape[0]
@@ -549,43 +538,72 @@ cbar.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(bold_formatter))
 
 
 
+
+
 # Visualization of KL-Divergence
-u1_DKL = DKL_estimator(u_data_sub.reshape(-1, 1), u_long_pred_smooth1.reshape(-1, 1))
-u2_DKL = DKL_estimator(u_data_sub.reshape(-1, 1), u_long_pred_smooth2.reshape(-1, 1))
-u3_DKL = DKL_estimator(u_data_sub.reshape(-1, 1), u_long_pred_smooth3.reshape(-1, 1))
-ux1_DKL = DKL_estimator(u_jointPDF[:, [0]], u_jointPDF1[:, [0]])
-ux2_DKL = DKL_estimator(u_jointPDF[:, [0]], u_jointPDF2[:, [0]])
-ux3_DKL = DKL_estimator(u_jointPDF[:, [0]], u_jointPDF3[:, [0]])
-uxx1_DKL = DKL_estimator(u_jointPDF[:, [1]], u_jointPDF1[:, [1]])
-uxx2_DKL = DKL_estimator(u_jointPDF[:, [1]], u_jointPDF2[:, [1]])
-uxx3_DKL = DKL_estimator(u_jointPDF[:, [1]], u_jointPDF3[:, [1]])
-u_joint1_DKL = DKL_estimator(u_jointPDF, u_jointPDF1)
-u_joint2_DKL = DKL_estimator(u_jointPDF, u_jointPDF2)
-u_joint3_DKL = DKL_estimator(u_jointPDF, u_jointPDF3)
+# u1_DKL = DKL1d(u_test_sub.reshape(-1, 1), u_long_pred_smooth1.reshape(-1, 1))
+# u2_DKL = DKL1d(u_test_sub.reshape(-1, 1), u_long_pred_smooth2.reshape(-1, 1))
+# u3_DKL = DKL1d(u_test_sub.reshape(-1, 1), u_long_pred_smooth3.reshape(-1, 1))
+
+ux1_DKL_forward = DKL1d(u_jointPDF[:, 0], u_jointPDF1[:, 0])
+ux2_DKL_forward = DKL1d(u_jointPDF[:, 0], u_jointPDF2[:, 0])
+ux3_DKL_forward = DKL1d(u_jointPDF[:, 0], u_jointPDF3[:, 0])
+uxx1_DKL_forward = DKL1d(u_jointPDF[:, 1], u_jointPDF1[:, 1])
+uxx2_DKL_forward = DKL1d(u_jointPDF[:, 1], u_jointPDF2[:, 1])
+uxx3_DKL_forward = DKL1d(u_jointPDF[:, 1], u_jointPDF3[:, 1])
+u_joint1_DKL_forward = DKL_estimator(u_jointPDF, u_jointPDF1)
+u_joint2_DKL_forward = DKL_estimator(u_jointPDF, u_jointPDF2)
+u_joint3_DKL_forward = DKL_estimator(u_jointPDF, u_jointPDF3)
 
 
-fig = plt.figure(figsize=(15, 10))
-ax = fig.subplots()
-ax.scatter(np.arange(1, 7, 2), [u1_DKL, u2_DKL, u3_DKL], s=400, marker="o", label=r"\unboldmath$u$")
-ax.scatter(np.arange(1, 7, 2), [ux1_DKL, ux2_DKL, ux3_DKL], s=400, marker="^", label=r"\unboldmath$u_x$")
-ax.scatter(np.arange(1, 7, 2), [uxx1_DKL, uxx2_DKL, uxx3_DKL], s=400, marker="*", label=r"\unboldmath$u_{xx}$")
-ax.scatter(np.arange(1, 7, 2), [u_joint1_DKL, u_joint2_DKL, u_joint3_DKL], s=400, marker="X", label=r"\unboldmath$(u_x, u_{xx})$")
-ax.plot(np.arange(1, 7, 2), [u1_DKL, u2_DKL, u3_DKL], marker="o", markersize=30, linewidth=3)
-ax.plot(np.arange(1, 7, 2), [ux1_DKL, ux2_DKL, ux3_DKL], marker="^", markersize=30)
-ax.plot(np.arange(1, 7, 2), [uxx1_DKL, uxx2_DKL, uxx3_DKL], marker="*", markersize=30)
-ax.plot(np.arange(1, 7, 2), [u_joint1_DKL, u_joint2_DKL, u_joint3_DKL], marker="X", markersize=30)
-ax.set_ylim([0, 0.2])
-ax.set_xlim([0, 6])
-ax.set_ylabel(r"\unboldmath$D_{\textrm{KL}}$", fontsize=40, labelpad=15)
-ax.tick_params(labelsize=40, length=15, width=3)
-ax.set_xticks([1,3,5], [r"\textbf{Model 1}", r"\textbf{Model 2}", r"\textbf{Model 3}"])
-lege = fig.legend(fontsize=45, loc="upper center", ncol=4, fancybox=False, edgecolor="black", columnspacing=0.25, handletextpad=0, bbox_to_anchor=(0.56, 1))
+ux1_DKL_reverse = DKL1d(u_jointPDF1[:, 0], u_jointPDF[:, 0])
+ux2_DKL_reverse = DKL1d(u_jointPDF2[:, 0], u_jointPDF[:, 0])
+ux3_DKL_reverse = DKL1d(u_jointPDF3[:, 0], u_jointPDF[:, 0])
+uxx1_DKL_reverse = DKL1d(u_jointPDF1[:, 1], u_jointPDF[:, 1])
+uxx2_DKL_reverse = DKL1d(u_jointPDF2[:, 1], u_jointPDF[:, 1])
+uxx3_DKL_reverse = DKL1d(u_jointPDF3[:, 1], u_jointPDF[:, 1])
+u_joint1_DKL_reverse = DKL_estimator(u_jointPDF1, u_jointPDF)
+u_joint2_DKL_reverse = DKL_estimator(u_jointPDF2, u_jointPDF)
+u_joint3_DKL_reverse = DKL_estimator(u_jointPDF3, u_jointPDF)
+
+
+
+# Forward DKL
+fig = plt.figure(figsize=(25, 10))
+axs = fig.subplots(1, 2)
+axs[0].scatter(np.arange(1, 7, 2), [DKL1_forward, DKL2_forward, DKL3_forward], s=400, marker="o", label=r"\unboldmath$u$")
+axs[0].scatter(np.arange(1, 7, 2), [ux1_DKL_forward, ux2_DKL_forward, ux3_DKL_forward], s=400, marker="^", label=r"\unboldmath$u_x$")
+axs[0].scatter(np.arange(1, 7, 2), [uxx1_DKL_forward, uxx2_DKL_forward, uxx3_DKL_forward], s=400, marker="*", label=r"\unboldmath$u_{xx}$")
+axs[0].scatter(np.arange(1, 7, 2), [u_joint1_DKL_forward, u_joint2_DKL_forward, u_joint3_DKL_forward], s=400, marker="X", label=r"\unboldmath$(u_x, u_{xx})$")
+axs[0].plot(np.arange(1, 7, 2), [DKL1_forward, DKL2_forward, DKL3_forward], marker="o", markersize=25, linewidth=3)
+axs[0].plot(np.arange(1, 7, 2), [ux1_DKL_forward, ux2_DKL_forward, ux3_DKL_forward], marker="^", markersize=25)
+axs[0].plot(np.arange(1, 7, 2), [uxx1_DKL_forward, uxx2_DKL_forward, uxx3_DKL_forward], marker="*", markersize=25)
+axs[0].plot(np.arange(1, 7, 2), [u_joint1_DKL_forward, u_joint2_DKL_forward, u_joint3_DKL_forward], marker="X", markersize=25)
+axs[0].set_xlim([0, 6])
+axs[0].set_ylabel(r"\textbf{Forward} \unboldmath$D_{\textrm{KL}}$", fontsize=35, labelpad=15)
+axs[0].tick_params(labelsize=30, length=15, width=3)
+axs[0].set_xticks([1,3,5], [r"\textbf{Model 1}", r"\textbf{Model 2}", r"\textbf{Model 3}"])
+axs[1].scatter(np.arange(1, 7, 2), [DKL1_reverse, DKL2_reverse, DKL3_reverse], s=400, marker="o")
+axs[1].scatter(np.arange(1, 7, 2), [ux1_DKL_reverse, ux2_DKL_reverse, ux3_DKL_reverse], s=400, marker="^")
+axs[1].scatter(np.arange(1, 7, 2), [uxx1_DKL_reverse, uxx2_DKL_reverse, uxx3_DKL_reverse], s=400, marker="*")
+axs[1].scatter(np.arange(1, 7, 2), [u_joint1_DKL_reverse, u_joint2_DKL_reverse, u_joint3_DKL_reverse], s=400, marker="X")
+axs[1].plot(np.arange(1, 7, 2), [DKL1_reverse, DKL2_reverse, DKL3_reverse], marker="o", markersize=25, linewidth=3)
+axs[1].plot(np.arange(1, 7, 2), [ux1_DKL_reverse, ux2_DKL_reverse, ux3_DKL_reverse], marker="^", markersize=25)
+axs[1].plot(np.arange(1, 7, 2), [uxx1_DKL_reverse, uxx2_DKL_reverse, uxx3_DKL_reverse], marker="*", markersize=25)
+axs[1].plot(np.arange(1, 7, 2), [u_joint1_DKL_reverse, u_joint2_DKL_reverse, u_joint3_DKL_reverse], marker="X", markersize=25)
+axs[1].set_xlim([0, 6])
+axs[1].set_ylabel(r"\textbf{Reverse} \unboldmath$D_{\textrm{KL}}$", fontsize=35, labelpad=15)
+axs[1].tick_params(labelsize=30, length=15, width=3)
+axs[1].set_xticks([1,3,5], [r"\textbf{Model 1}", r"\textbf{Model 2}", r"\textbf{Model 3}"])
+axs[0].set_ylim([0.0, 0.10])
+axs[0].set_ylim([0.0, 0.10])
+axs[0].set_yticks([0.0, 0.02, 0.04, 0.06, 0.08, 0.1])
+axs[1].set_yticks([0.0, 0.02, 0.04, 0.06, 0.08, 0.1])
+lege = fig.legend(fontsize=35, loc="upper center", ncol=4, fancybox=False, edgecolor="black", columnspacing=0.25, handletextpad=0, bbox_to_anchor=(0.51, 1))
 lege.get_frame().set_linewidth(3)
 fig.tight_layout()
-fig.subplots_adjust(top=0.8)
-for spine in ax.spines.values():
-    spine.set_linewidth(3)
-
-
-
+fig.subplots_adjust(top=0.82, wspace=0.25)
+for ax in axs:
+    for spine in ax.spines.values():
+        spine.set_linewidth(3)
 
