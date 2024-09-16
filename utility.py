@@ -215,6 +215,7 @@ class FNO_KSE(nn.Module):
         gridx = torch.tensor(np.linspace(0, 127.8750, size_x), dtype=torch.float) ###################### modification of grid length
         gridx = gridx.reshape(1, size_x, 1).repeat([batchsize, 1, 1])
         return gridx.to(device)
+
 class FNO_KSE_EKI(nn.Module):
     def __init__(self, modes, width):
         super().__init__()
@@ -465,6 +466,19 @@ def acf(x, lag=200):
     i = np.arange(0, lag+1)
     v = np.array([1]+[np.corrcoef(x[:-i], x[i:])[0,1]  for i in range(1, lag+1)])
     return (i, v)
+
+def DKL1d(data_p, data_q):
+    kde_p = sp.stats.gaussian_kde(data_p)
+    kde_q = sp.stats.gaussian_kde(data_q)
+    grid_points = np.linspace(min(data_p.min(), data_q.min()), max(data_p.max(), data_q.max()), 1000)
+    pdf_p = kde_p(grid_points)
+    pdf_q = kde_q(grid_points)
+    epsilon = 1e-10
+    kl_values = sp.special.kl_div(pdf_p, pdf_q + epsilon)
+    kl_total = np.trapz(kl_values, grid_points)
+    return kl_total
+
+
 def DKL_estimator(s1, s2, k=1):
     """KL-Divergence estimator using scipy's KDTree
     s1: (N_1,D) Sample drawn from distribution P
@@ -493,13 +507,14 @@ def DKL_estimator(s1, s2, k=1):
 
 
 # Training/Testing Time Series Batches
-def get_batch(t, u, num_batch, batch_time):
-    data_size = u.shape[0]
-    heads_idx = torch.from_numpy(np.random.choice(data_size - batch_time, size=num_batch))
+def get_batchs(u, t, num_batchs, batch_steps):
+    Nt = u.shape[0]
+    heads_idx = np.random.choice(Nt-batch_steps+1, size=num_batchs, replace=False)
     batch_u0 = u[heads_idx]
-    batch_t = t[:batch_time]
-    batch_u = torch.stack( [u[heads_idx+i] for i in range(batch_time)] )
+    batch_t = t[:batch_steps]
+    batch_u = torch.stack( [u[heads_idx+i] for i in range(batch_steps)] )
     return batch_u0, batch_t, batch_u
+
 def integrate_batch(t, u, model, batch_time):
     device = u.device
     data_size = u.shape[0]
@@ -545,6 +560,21 @@ def integrate_batch_eki(t, u, model_eki, batch_time):
     state_error_rel /= num_batch
     return [state_error_abs, state_error_rel]
 
+def predict_short_relay(u, t, model, short_steps):
+    u0_batch = u[::short_steps]
+    with torch.no_grad():
+        u_shortPred = torchdiffeq.odeint(model, u0_batch, t[:short_steps])
+    u_shortPred = u_shortPred.permute(1,0,2).reshape(-1, u.shape[1])
+    return u_shortPred
+
+
+
+
+
+
+
+
+
 def solve_poisson_equation_2d_periodic(f, L, N):
     h = L / N  # Grid spacing
     # Compute wave numbers
@@ -573,26 +603,79 @@ def stream2velocity(stream, dx=1/64, dy=1/64):
     return u, v
 
 
-def kurtosis(x):
-    x_bar = torch.mean(x)
-    x_scaled = x - x_bar
-    x_var = torch.mean(torch.pow(x_scaled, 2.0))
-    x_std = torch.pow(x_var, 0.5)
-    x_zscores = x_scaled / x_std
-    x_kurtoses = torch.mean(torch.pow(x_zscores, 4.0)) - 3.0
-    return x_kurtoses
-
-
-def kurtosis_uxx(u, dx, smoother=True):
-    """
-    :param u: tensor(Nt, Nx); time series of K-S
-    :param smoother: bool; smoothing u
-    :return: tensor(); kurtosis of uxx
-    """
-    # Smooth
+def var_ux(u, dx, smoother=False):
     if smoother == True:
-        u = sp.signal.savgol_filter(sp.signal.savgol_filter(u, 100, 3), 100, 3)
-    # FDM
-    u_xx = (u[:, 2:] + u[:, :-2] - 2*u[:, 1:-1]) / (dx**2)
-    # kurtosis
-    return kurtosis(u_xx)
+        u = torch.fft.irfft( torch.fft.rfft(u)[:, :8], n=u.shape[1])
+    ux = (u[:, 2:] - u[:, :-2]) / (2*dx)
+    return  torch.var(ux)
+
+def var_uxx(u, dx, smoother=False):
+    if smoother == True:
+        u = torch.fft.irfft( torch.fft.rfft(u)[:, :8], n=u.shape[1])
+    uxx = (u[:, 2:] + u[:, :-2] - 2*u[:, 1:-1]) / (dx**2)
+    return  torch.var(uxx)
+
+
+def kurtosis(x):
+    x_normalized = (x - torch.mean(x)) / torch.std(x)
+    x_kurtosis = torch.mean(x_normalized**4) - 3.0
+    return x_kurtosis
+
+def kurtosis_ux(u, dx, smoother=False):
+    if smoother == True:
+        u = torch.fft.irfft( torch.fft.rfft(u)[:, :8], n=u.shape[1])
+    ux = (u[:, 2:] - u[:, :-2]) / (2*dx)
+    return  kurtosis(ux)
+
+def kurtosis_uxx(u, dx, smoother=False):
+    if smoother == True:
+        u = torch.fft.irfft( torch.fft.rfft(u)[:, :8], n=u.shape[1])
+    uxx = (u[:, 2:] + u[:, :-2] - 2*u[:, 1:-1]) / (dx**2)
+    return  kurtosis(uxx)
+
+
+def kurtosis_uxx_Fourier(u, dx, smoother=False):
+    k = torch.fft.fftfreq(u.shape[1], d=dx)
+    u_hat = torch.fft.fft(u)
+    if smoother == True:
+        s = 0.23
+        u_hat = u_hat * torch.exp(-0.5 * (k/s)**2)
+    uxx_hat = - (2 * np.pi * k) ** 2 * u_hat
+    uxx = torch.fft.ifft(uxx_hat, n=u.shape[1]).real
+    return uxx
+
+
+
+def FNO_get_params(model):
+    return torch.nn.utils.parameters_to_vector(model.parameters()).detach()
+
+def FNO_set_params(model, params):
+    device = next(model.parameters()).device
+    torch.nn.utils.vector_to_parameters(params, model.parameters())
+    for m in model.children():
+        if not isinstance(m, type(model.conv0)):
+            with torch.no_grad():
+                for param in m.parameters():
+                    param.data = param.data.real
+    model.to(device)
+
+
+
+def cross_cov(X, Y):
+    device = X.device
+    J = X.shape[0]
+    assert J == Y.shape[0]
+    assert device == Y.device
+    p, d = X.shape[1], Y.shape[1]
+    X_mean = torch.zeros(p).to(device)
+    Y_mean = torch.zeros(d).to(device)
+    CCOV = torch.zeros(p, d).to(device)
+    for j in range(J):
+        X_mean = X_mean + X[j]
+        Y_mean = Y_mean + Y[j]
+        CCOV = CCOV + torch.outer(X[j], Y[j])
+    X_mean = X_mean/J
+    Y_mean = Y_mean/J
+    CCOV = CCOV/J - torch.outer(X_mean, Y_mean)
+    return CCOV
+
