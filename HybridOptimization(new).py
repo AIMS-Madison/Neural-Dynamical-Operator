@@ -67,8 +67,7 @@ train_t_part = train_t[:short_steps]
 # train_u_part = train_u[1000:1040]
 # train_t_part = train_t[1000:1040]
 
-# Statistics Data
-train_idx_u0_longSim = np.arange(long_steps, Ntrain, long_steps) # Known initial point and long-term statistics. Unknown trajectory
+train_idx_u0_longSim = np.arange(long_steps, Ntrain, long_steps)
 train_var_u = torch.stack([torch.var(train_u[n:n + long_steps].to(device)) for n in train_idx_u0_longSim])
 train_var_ux = torch.stack([var_ux(train_u[n:n + long_steps].to(device), dx) for n in train_idx_u0_longSim])
 train_var_uxx = torch.stack([var_uxx(train_u[n:n + long_steps].to(device), dx) for n in train_idx_u0_longSim])
@@ -166,7 +165,6 @@ test_ux_init = (test_u_longSim_init_smooth[:,:, 2:] - test_u_longSim_init_smooth
 test_uxx = (test_u[:, 2:] - 2*test_u[:, 1:-1] + test_u[:, :-2])/dx**2
 test_uxx_init = (test_u_longSim_init_smooth[:,:, 2:] - 2*test_u_longSim_init_smooth[:,:, 1:-1] + test_u_longSim_init_smooth[:,:, :-2]) / dx**2
 
-
 fig = plt.figure(figsize=(30, 7))
 axs = fig.subplots(1, 5)
 for i in range(5):
@@ -194,6 +192,10 @@ fig.tight_layout()
 fig.subplots_adjust(top=0.78)
 
 
+
+
+
+
 #############################################################
 ################ Model Training with SGD+EKI ################
 #############################################################
@@ -209,37 +211,35 @@ train_loss_history_sgd = []
 # EKI setup
 Nit = 20
 J = 100
-d = len(train_kurtosis_uxx)
+d = len(train_var_uxx)
 p = len(torch.nn.utils.parameters_to_vector(model.parameters()))
 c = 0.01  # Hyper-Parameter
 COV_eta = c*torch.eye(d).to(device)
 theta_bar_history_eki = []
 train_state_loss_history_eki = np.zeros((Nhybrid, Nit+1)) # 2-D (#EKI, Nit+1)
-train_kurtosis_loss_history_eki = np.zeros((Nhybrid, Nit+1)) # 2-D (#EKI, Nit+1)
-
+train_var_loss_history_eki = np.zeros((Nhybrid, Nit+1)) # 2-D (#EKI, Nit+1)
 
 def computing_hybrid_error():
     # This function is not Self-Contained, it needs other data from the script
     device = next(model.parameters()).device
     with torch.no_grad():
         train_u_longSim = torchdiffeq.odeint(model, train_u[train_idx_u0_longSim].to(device), train_t[:long_steps].to(device), method="euler", options={"step_size":0.2})
-    train_kurtosis_uxx_pred = torch.stack([kurtosis_uxx(train_u_longSim[:,i,:], dx, True) for i in range(len(train_idx_u0_longSim))])
-    train_kurtosis_loss = F.mse_loss(train_kurtosis_uxx, train_kurtosis_uxx_pred).item()
+    train_var_uxx_pred = torch.stack([var_uxx(train_u_longSim[:,i,:], dx, True) for i in range(len(train_idx_u0_longSim))])
+    train_var_loss = F.mse_loss(train_var_uxx, train_var_uxx_pred).item()
     # model.cpu()
     # train_u_shortPred = predict_short_relay(train_u, train_t, model, test_short_steps)
     # model.to(device)
     with torch.no_grad():
         train_u_part_shortPred = torchdiffeq.odeint(model, train_u_part[0].to(device), train_t[:short_steps].to(device)).cpu()
     train_state_loss = F.mse_loss(train_u_part, train_u_part_shortPred).item()
-    return train_kurtosis_loss, train_state_loss
-
+    return train_var_loss, train_state_loss
 
 for nh in range(Nhybrid):
     # Computing Error (After SGD & Before EKI)
-    train_kurtosis_loss, train_state_loss = computing_hybrid_error()
-    train_kurtosis_loss_history_eki[nh, 0] = train_kurtosis_loss
+    train_var_loss, train_state_loss = computing_hybrid_error()
+    train_var_loss_history_eki[nh, 0] = train_var_loss
     train_state_loss_history_eki[nh, 0] = train_state_loss
-    print("long kurtosis error: ", round(train_kurtosis_loss, 4))
+    print("long var error: ", round(train_var_loss, 4))
     print("short state error: ", round(train_state_loss, 4))
 
     print("EKI", nh+1, "Start")
@@ -256,24 +256,24 @@ for nh in range(Nhybrid):
             FNO_set_params(model, ensemble_theta[j])
             with torch.no_grad():
                 u_longSim = torchdiffeq.odeint(model, train_u[train_idx_u0_longSim].to(device), train_t[:long_steps].to(device), method="euler", options={"step_size":0.2})
-            ensemble_g[j] = torch.stack([kurtosis_uxx(u_longSim[:,i,:], dx, True) for i in range(len(train_idx_u0_longSim))])
+            ensemble_g[j] = torch.stack([var_uxx(u_longSim[:,i,:], dx, True) for i in range(len(train_idx_u0_longSim))])
         end_time = time.time()
         print("Ensemble Simulation Time:", end_time - start_time)
 
         # 2) Updating ensemble_theta
         CCOV = cross_cov(ensemble_theta, ensemble_g)
         COV_gg = cross_cov(ensemble_g, ensemble_g)
-        ensemble_y = train_kurtosis_uxx + c * torch.randn(J, d).to(device)
+        ensemble_y = train_var_uxx + c * torch.randn(J, d).to(device)
         ensemble_theta += (CCOV@torch.linalg.inv(COV_gg + COV_eta).to(torch.complex64)@(ensemble_y-ensemble_g).T.to(torch.complex64)).T
         theta_bar = ensemble_theta.mean(0)
         theta_bar_history_eki.append(theta_bar)
 
         # 3) Computing Error (Inside EKI)
         FNO_set_params(model, theta_bar)
-        train_kurtosis_loss, train_state_loss = computing_hybrid_error()
-        train_kurtosis_loss_history_eki[nh, nit] = train_kurtosis_loss
+        train_var_loss, train_state_loss = computing_hybrid_error()
+        train_var_loss_history_eki[nh, nit] = train_var_loss
         train_state_loss_history_eki[nh, nit] = train_state_loss
-        print("long kurtosis error: ", round(train_kurtosis_loss, 4) )
+        print("long var error: ", round(train_var_loss, 4) )
         print("short state error: ", round(train_state_loss, 4) )
 
     print("SGD Start")
@@ -299,10 +299,17 @@ for nh in range(Nhybrid):
         end_time = time.time()
         print( ep, "Time: ", round(end_time-start_time, 4), "Loss: ",  round(loss.item(), 4) )
 
-torch.save(theta_bar_history_eki, r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(kurtosis)longSim200s_theta_bar_history.pt')
-np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(kurtosis)longSim200s_train_loss_history_sgd.npy', train_loss_history_sgd)
-np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(kurtosis)longSim200s_train_state_loss_history_eki.npy', train_state_loss_history_eki)
-np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(kurtosis)longSim200s_train_kurtosis_loss_history_eki.npy', train_kurtosis_loss_history_eki)
+# torch.save(theta_bar_history_eki, r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_theta_bar_history.pt')
+# np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_loss_history_sgd.npy', train_loss_history_sgd)
+# np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_state_loss_history_eki.npy', train_state_loss_history_eki)
+# np.save(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_var_loss_history_eki.npy', train_var_loss_history_eki)
+
+
+
+theta_bar_history_eki = torch.load(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_theta_bar_history.pt')
+train_loss_history_sgd = np.load(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_loss_history_sgd.npy', )
+train_state_loss_history_eki = np.load(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_state_loss_history_eki.npy', )
+train_var_loss_history_eki = np.load(r'C:\Users\chenc\CodeProject\Neural-Dynamical-Operator\ModelHybrid\(var)longSim200s_train_var_loss_history_eki.npy', )
 
 
 ####################
@@ -315,54 +322,58 @@ axs = fig.subplots(2, 5)
 for i in range(Nhybrid):
     ax = axs.flatten()[i]
     ax2 = ax.twinx()
-    ax.plot(train_state_loss_history_eki[i], label=r"\textbf{Short-term state loss}", color="C0", marker="o", markersize=8)
-    ax2.plot(train_kurtosis_loss_history_eki[i], label=r"\textbf{Long-term statistics loss}",color="C1", marker="s", markersize=8)
-    ax.set_title(r"\textbf{EKI " + str(i+1) + "}", fontsize=30)
+    ax.plot(train_state_loss_history_eki[i], label=r"\textbf{Short-term state error}", color="C0", marker="o", markersize=8)
+    ax2.plot(train_var_loss_history_eki[i], label=r"\textbf{Long-term statistics error}",color="C1", marker="s", markersize=8)
+    ax.set_title(r"\textbf{EKI " + str(i+1) + "}", fontsize=35)
     ax.set_xlim([0, 20])
-    ax.set_ylim([np.min(train_state_loss_history_eki), np.max(train_state_loss_history_eki)])
-    ax2.set_ylim([0, 0.1])
-    # ax.set_yticks([0.00, 0.01, 0.02, 0.03])
-    # ax2.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8])
-    ax.tick_params(labelsize=25, length=6, width=2)
-    ax2.tick_params(labelsize=25, length=6, width=2)
+    ax.set_ylim([0, np.max(train_state_loss_history_eki)])
+    ax2.set_ylim([0, np.max(train_var_loss_history_eki)])
+    ax.set_yticks([0.00, 0.01, 0.02, 0.03])
+    ax2.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8])
+    ax.tick_params(labelsize=35, length=10, width=2)
+    ax2.tick_params(labelsize=35, length=10, width=2)
+    ax.set_xticks([0, 5, 10, 15, 20])
     if i>4:
-        ax.set_xlabel(r"\unboldmath$N_{\text{it}}$", fontsize=30)
-axs[0,0].set_ylabel(r"\textbf{MSE}", fontsize=30)
-axs[1,0].set_ylabel(r"\textbf{MSE}", fontsize=30)
+        ax.set_xlabel(r"\unboldmath$N_{\text{it}}$", fontsize=40)
+axs[0,0].set_ylabel(r"\textbf{MSE}", fontsize=40)
+axs[1,0].set_ylabel(r"\textbf{MSE}", fontsize=40)
 lege_handle, lege_label = ax.get_legend_handles_labels()
 lege_handle.extend(ax2.get_legend_handles_labels()[0])
 lege_label.extend(ax2.get_legend_handles_labels()[1])
-lege = fig.legend(handles=lege_handle, labels=lege_label, fontsize=30, loc="upper center", ncol=2, fancybox=False, edgecolor="black")
+lege = fig.legend(handles=lege_handle, labels=lege_label, fontsize=40, loc="upper center", ncol=2, fancybox=False, edgecolor="black")
 lege.get_frame().set_linewidth(1)
 for ax in axs.flatten():
     for spine in ax.spines.values():
         spine.set_linewidth(1)
 fig.tight_layout()
-fig.subplots_adjust(hspace=0.3, top=0.85)
+fig.subplots_adjust(hspace=0.4, top=0.82)
 
 
 
 # Figure 2.
-fig = plt.figure(figsize=(32, 12))
+fig = plt.figure(figsize=(32, 11))
 axs = fig.subplots(2, 5)
 for i in range(Nhybrid):
     ax = axs.flatten()[i]
     ax.scatter(train_state_loss_history_eki[i], train_var_loss_history_eki[i], s=120)
     ax.set_title(r"\textbf{EKI " + str(i+1) + "}", fontsize=30)
-    ax.tick_params(labelsize=25, length=6, width=2)
-    if i>4:
-        ax.set_xlabel(r"\textbf{Short-term state loss}", fontsize=30)
-axs[0,0].set_ylabel(r"\textbf{Long-term statistics loss}", fontsize=30)
+    ax.tick_params(labelsize=35, length=10, width=2)
+    # if i>4:
+    #     ax.set_xlabel(r"\textbf{Short-term state loss}", fontsize=40)
+ax.scatter(train_state_loss_history_eki[9, 2], train_var_loss_history_eki[9, 2], s=150, color="red")
+axs[1,2].set_xlabel(r"\textbf{Short-term state error}", fontsize=40, labelpad=25)
+axs[0,0].set_ylabel(r"\textbf{Long-term statistics error}", fontsize=40, labelpad=20)
 for ax in axs.flatten():
     ax.set_xlim([0, 0.03])
     ax.set_ylim([0, 0.9])
     ax.set_xticks([0.00, 0.01, 0.02, 0.03])
-    ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8])
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8])
     for spine in ax.spines.values():
         spine.set_linewidth(1)
-axs[0, 0].yaxis.set_label_coords(-0.15, 0.0)
+axs[0, 0].yaxis.set_label_coords(-0.3, -0.2)
 fig.tight_layout()
-fig.subplots_adjust(hspace=0.3, left=0.05)
+fig.subplots_adjust(hspace=0.4, left=0.062)
+
 
 
 # Model with "optimal" parameters
@@ -370,6 +381,7 @@ train_var_loss_history_eki[9, 2]
 theta_bar_optimal = theta_bar_history_eki[181]
 FNO_set_params(model, theta_bar_optimal)
 # Predictive kurtosis after SGD+EKI training
+model.to(device)
 with torch.no_grad():
     train_u_longSim_new = torchdiffeq.odeint(model, train_u[train_idx_u0_longSim].to(device), train_t[:long_steps].to(device), method="euler", options={"step_size":0.2})
     test_u_longSim_new = torchdiffeq.odeint(model, test_u[test_idx_u0_longSim].to(device), test_t[:test_long_steps].to(device), method="euler", options={"step_size":0.2})
@@ -379,6 +391,7 @@ F.mse_loss(train_var_uxx, train_var_uxx_pred_init)
 F.mse_loss(train_var_uxx, train_var_uxx_pred_new)
 F.mse_loss(test_var_uxx, test_var_uxx_pred_init)
 F.mse_loss(test_var_uxx, test_var_uxx_pred_new)
+
 
 
 test_u_longSim_init_smooth = torch.fft.irfft(torch.fft.rfft(test_u_longSim_init)[:, :, :8], n=256)
@@ -422,6 +435,10 @@ test_u_shortpred_init = predict_short_relay(test_u, test_t, model_init, 10)
 test_u_shortpred_new = predict_short_relay(test_u, test_t, model, 10)
 F.mse_loss(test_u, test_u_shortpred_init)
 F.mse_loss(test_u, test_u_shortpred_new)
+
+torch.mean( torch.norm(test_u - test_u_shortpred_init, 2, 1) / torch.norm(test_u, 2, 1) ).item()
+torch.mean( torch.norm(test_u - test_u_shortpred_new, 2, 1) / torch.norm(test_u, 2, 1) ).item()
+
 # Figure 4.
 fig = plt.figure(figsize=(30, 18))
 axs = fig.subplots(3, 4, sharex=True, sharey=True)
@@ -493,6 +510,7 @@ lege = fig.legend(fontsize=40, loc="upper center", ncol=3, fancybox=False, edgec
 lege.get_frame().set_linewidth(2)
 fig.tight_layout()
 fig.subplots_adjust(top=0.87)
+
 
 
 # Figure 5.
