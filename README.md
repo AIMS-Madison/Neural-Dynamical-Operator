@@ -2,7 +2,7 @@
 
 ## with Hybrid Optimization
 
-### Continous Spatial-Temporal Model <br> with Short-term States Prediction & Long-term Statistics Matching <br> for Continuous Complex Systems and PDEs
+### Continous Spatial-Temporal Model <br> with Short-Term States Prediction and Long-Term Statistics Matching <br> for Continuous Complex Systems and PDEs
 
 
 This repository contains the code for the paper:
