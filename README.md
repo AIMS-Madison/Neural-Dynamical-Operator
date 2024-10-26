@@ -10,11 +10,11 @@ This repository contains the code for the paper:
 ](https://arxiv.org/abs/2311.11798)
 
 ## Highlights:
-- Neural Dynamical Operator: Neural Operator in Neural ODE  
-- Hybrid Optimization: SGD + EKI
+- Neural Dynamical Operator: Continuous Spatial-Temporal Model via Neural Operator in Neural ODE
+- Stable Long-Term Forecasting for Spatial-Temporal Chaotic System 
 - Short-Term State Prediction + Long-Term Statistics Matching
-- Stable Long-Term Simulation with Chaotic Behavior 
-- Continuous Spatial-Temporal Model
+- Multi-Objective Optimization via Hybrid Optimization Method: Gradient-Based (SGD) + Derivative-Free (EKI)
+
 
 ## Citations
 ```
