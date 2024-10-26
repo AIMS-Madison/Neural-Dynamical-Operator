@@ -6,8 +6,7 @@
 
 
 This repository contains the code for the paper:
-- [Operator Learning for Continuous Spatial-Temporal Model with Gradient-Based and Derivative-Free Optimization Methods
-](https://arxiv.org/abs/2311.11798)
+- [Neural dynamical operator: Continuous spatial-temporal model with gradient-based and derivative-free optimization methods]([https://arxiv.org/abs/2311.11798](https://www.sciencedirect.com/science/article/pii/S0021999124007289))
 
 ## Highlights:
 - Neural Dynamical Operator: Continuous Spatial-Temporal Model via Neural Operator in Neural ODE
@@ -18,12 +17,12 @@ This repository contains the code for the paper:
 
 ## Citations
 ```
-@misc{chen2024operator,
-      title={Operator Learning for Continuous Spatial-Temporal Model with Gradient-Based and Derivative-Free Optimization Methods}, 
-      author={Chuanqi Chen and Jin-Long Wu},
-      year={2024},
-      eprint={2311.11798},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG}
+@article{chen2024neural,
+  title={Neural Dynamical Operator: Continuous Spatial-Temporal Model with Gradient-Based and Derivative-Free Optimization Methods},
+  author={Chen, Chuanqi and Wu, Jin-Long},
+  journal={Journal of Computational Physics},
+  pages={113480},
+  year={2024},
+  publisher={Elsevier}
 }
 ```
