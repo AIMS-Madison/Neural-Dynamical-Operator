@@ -6,7 +6,7 @@
 
 
 This repository contains the code for the paper:
-- [Neural dynamical operator: Continuous spatial-temporal model with gradient-based and derivative-free optimization methods]([https://arxiv.org/abs/2311.11798](https://www.sciencedirect.com/science/article/pii/S0021999124007289))
+- [Neural dynamical operator: Continuous spatial-temporal model with gradient-based and derivative-free optimization methods](https://www.sciencedirect.com/science/article/pii/S0021999124007289)
 
 ## Highlights:
 - Neural Dynamical Operator: Continuous Spatial-Temporal Model via Neural Operator in Neural ODE
