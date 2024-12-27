@@ -426,7 +426,7 @@ def tke_spectrum_2d2d(u,v,lx=1,ly=1,smooth=True):
 
     k0x = 2.0*np.pi/lx
     k0y = 2.0*np.pi/ly
-    knorm = (k0x + k0y)/3.0
+    knorm = (k0x + k0y)/2.0
 
     kxmax = nx/2
     kymax = ny/2
