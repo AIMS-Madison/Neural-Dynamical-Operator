@@ -578,8 +578,8 @@ def predict_short_relay(u, t, model, short_steps):
 def solve_poisson_equation_2d_periodic(f, L, N):
     h = L / N  # Grid spacing
     # Compute wave numbers
-    kx = 2 * np.pi / L * np.fft.fftfreq(N, h)
-    ky = 2 * np.pi / L * np.fft.fftfreq(N, h)
+    kx = 2 * np.pi * np.fft.fftfreq(N, h)
+    ky = 2 * np.pi * np.fft.fftfreq(N, h)
     KX, KY = np.meshgrid(kx, ky, indexing='ij')
     # Compute the Fourier transform of the source term
     f_hat = np.fft.fftn(f)
